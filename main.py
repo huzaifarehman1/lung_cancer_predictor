@@ -8,33 +8,49 @@ from pyro.infer import SVI, Trace_ELBO,Importance, EmpiricalMarginal
 from pyro.optim import Adam
 
 
-# reading data
-path = "survey lung cancer.csv"
-data = pandas.read_csv(path)
 
 class network:
-    def __init__(self):
+    def __init__(self,data:pandas.DataFrame):
+        
+        self.data = data
+        
         lis = [
     "smoking", "yellow_fingers", "anxiety", "peer_pressure",
     "chronic_disease", "fatigue", "allergy", "wheezing",
     "alcohol", "coughing", "shortness_breath",
     "swallowing", "chest_pain"
 ]
-        self.smoking_T = 0
-        self.smoking_O = 0
-        
+        accuracy_lis = [0.98 , 0.95 , 0.78 , 0.84,
+                        0.978, 0.93 , 0.97 , 0.98,
+                        0.97 , 0.94 , 0.98 ,
+                        0.85 , 0.987
+                        ]
         for i in lis:
             name1 = i + "_T"
             name2 = i + "_O"
-            value1,value2  = self.find_T_O()# column name
+            value1,value2  = self.find_T_O(i.upper())# column name
             setattr(self, name1, value1)
             setattr(self, name2, value2)
         
-        P_distribution = {}
-        
+        self.P_distribution = {}
+        k = 0
         for i in lis:
-            pass
+            name1 = i + "_T"
+            name2 = i + "_O"
+            temp1 = getattr(self,name1)
+            temp2 = getattr(self,name2)
+            self.P_distribution[i] = self.do_svi_boolean(i.upper(),temp1,temp2,accuracy_lis[k],100)
+            k += 1
             
+    
+    def find_T_O(self,name):
+        # 2 = yes 1  = no
+        if name not in self.data.columns:
+            raise Exception(f"Wrong column name {name}")
+        yes_count = (self.data[name] == 2).sum()  # count how many = 2
+        no_count  = (self.data[name] == 1).sum()  # count how many = 1
+        total     = yes_count + no_count
+        return total,yes_count 
     
     
     def do_svi_boolean(self,name,total,observed,accuracy,steps=3000):
@@ -74,61 +90,37 @@ class network:
 
         
     
-    def create_network(self):
+    def create_network(self,features):
         P_age = 0 #hard part
         age = pyro.sample("age",P_age)
-        
-        P_smoking = self.do_svi_boolean("SMOKING",self.smoking_T,self.smoking_O,0.94,2000)
-        smoking = pyro.sample("smoking",P_smoking)
-        
-        P_yellow_fingers = self.do_svi_boolean("YELLOW_FINGERS", self.yellow_fingers_T, self.yellow_fingers_O, 0.94, 2000)
-        yellow_fingers = pyro.sample("yellow_fingers", P_yellow_fingers)
-
-        P_anxiety = self.do_svi_boolean("ANXIETY", self.anxiety_T, self.anxiety_O, 0.94, 2000)
-        anxiety = pyro.sample("anxiety", P_anxiety)
-
-        P_peer_pressure = self.do_svi_boolean("PEER_PRESSURE", self.peer_pressure_T, self.peer_pressure_O, 0.94, 2000)
-        peer_pressure = pyro.sample("peer_pressure", P_peer_pressure)
-
-        P_chronic_disease = self.do_svi_boolean("CHRONIC_DISEASE", self.chronic_disease_T, self.chronic_disease_O, 0.94, 2000)
-        chronic_disease = pyro.sample("chronic_disease", P_chronic_disease)
-
-        P_fatigue = self.do_svi_boolean("FATIGUE", self.fatigue_T, self.fatigue_O, 0.94, 2000)
-        fatigue = pyro.sample("fatigue", P_fatigue)
-
-        P_allergy = self.do_svi_boolean("ALLERGY", self.allergy_T, self.allergy_O, 0.94, 2000)
-        allergy = pyro.sample("allergy", P_allergy)
-
-        P_wheezing = self.do_svi_boolean("WHEEZING", self.wheezing_T, self.wheezing_O, 0.94, 2000)
-        wheezing = pyro.sample("wheezing", P_wheezing)
-
-        P_alcohol = self.do_svi_boolean("ALCOHOL_CONSUMING", self.alcohol_T, self.alcohol_O, 0.94, 2000)
-        alcohol = pyro.sample("alcohol", P_alcohol)
-
-        P_coughing = self.do_svi_boolean("COUGHING", self.coughing_T, self.coughing_O, 0.94, 2000)
-        coughing = pyro.sample("coughing", P_coughing)
-
-        P_shortness_breath = self.do_svi_boolean("SHORTNESS_OF_BREATH", self.shortness_breath_T, self.shortness_breath_O, 0.94, 2000)
-        shortness_breath = pyro.sample("shortness_breath", P_shortness_breath)
-
-        P_swallowing = self.do_svi_boolean("SWALLOWING_DIFFICULTY", self.swallowing_T, self.swallowing_O, 0.94, 2000)
-        swallowing = pyro.sample("swallowing", P_swallowing)
-
-        P_chest_pain = self.do_svi_boolean("CHEST_PAIN", self.chest_pain_T, self.chest_pain_O, 0.94, 2000)
-        chest_pain = pyro.sample("chest_pain", P_chest_pain)
+        lis = [
+    "smoking", "yellow_fingers", "anxiety", "peer_pressure",
+    "chronic_disease", "fatigue", "allergy", "wheezing",
+    "alcohol", "coughing", "shortness_breath",
+    "swallowing", "chest_pain"
+]
+        nodes = {"AGE":age}
+        for i in lis:
+            name = i.upper() 
+            observed = 0. if features[i.upper()]==0 else 1.0 #here
+            temp = pyro.sample(name,self.P_distribution[i],obs=torch.tensor(observed))
+            nodes[i] = temp
+            
         
         
-        
-        
-    def predict(self,features):
-        print(features)
-        return "50"    
+    def predict(self):   
+        pass
 
 class CancerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Lung Cancer Predictor")
-        self.network = network()
+        # reading data
+        path = "survey lung cancer.csv"
+        data = pandas.read_csv(path)
+
+        self.network = network(data)
+        
         self.show_welcome_screen()
 
 
@@ -189,7 +181,7 @@ class CancerApp:
         submit_btn.grid(row=row, columnspan=2, pady=20)
 
 
-    def predict_cancer(self):
+    def predict_cancer(self):  
         try:
             features = {}
             for field, widget in self.inputs.items():
@@ -202,8 +194,8 @@ class CancerApp:
                     else:
                         features[field] = 1    
 
-
-            result = self.network.predict(features)
+            self.network.create_network(features)
+            result = self.network.predict()
             self.show_result_screen(result)
 
 
