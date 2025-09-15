@@ -1,10 +1,31 @@
 import tkinter as tk
 from tkinter import messagebox
 import os
+import pandas
+
+
 
 
 class Bayesian_network:
-    pass
+    def __init__(self,answer_dict):
+        self.data = pandas.read_csv("survey lung cancer.csv")
+        attributes = self.data.columns
+        for i in attributes:
+            setattr(self,i,answer_dict[i])
+        
+        P_dict = {}
+        for i in attributes:
+            ans = getattr(self,i)
+            if not(isinstance(int,ans) or isinstance(str,ans)):
+                # not needed in if gender or age
+                
+                pass
+                    
+                    
+            
+                   
+        #self.P_smoking = None # if he smoke or not than P of lungcancer
+        
 
 
 
@@ -13,19 +34,19 @@ class HealthSurveyGUI:
         self.questions = {
             "GENDER": ["Male", "Female"],
             "AGE": None,  # Free text (numeric only)
-            "SMOKING": ["Yes", "No"],
-            "YELLOW_FINGERS": ["Yes", "No"],
-            "ANXIETY": ["Yes", "No"],
-            "PEER_PRESSURE": ["Yes", "No"],
-            "CHRONIC_DISEASE": ["Yes", "No"],
-            "FATIGUE": ["Yes", "No"],
-            "ALLERGY": ["Yes", "No"],
-            "WHEEZING": ["Yes", "No"],
-            "ALCOHOL": ["Yes", "No"],
-            "COUGHING": ["Yes", "No"],
-            "SHORTNESS_BREATH": ["Yes", "No"],
-            "SWALLOWING": ["Yes", "No"],
-            "CHEST_PAIN": ["Yes", "No"]
+            "SMOKING": ["YES", "NO"],
+            "YELLOW_FINGERS": ["YES", "NO"],
+            "ANXIETY": ["YES", "NO"],
+            "PEER_PRESSURE": ["YES", "NO"],
+            "CHRONIC_DISEASE": ["YES", "NO"],
+            "FATIGUE": ["YES", "NO"],
+            "ALLERGY": ["YES", "NO"],
+            "WHEEZING": ["YES", "NO"],
+            "ALCOHOL": ["YES", "NO"],
+            "COUGHING": ["YES", "NO"],
+            "SHORTNESS_BREATH": ["YES", "NO"],
+            "SWALLOWING": ["YES", "NO"],
+            "CHEST_PAIN": ["YES", "NO"]
         }
 
         self.answers = {}
@@ -83,14 +104,20 @@ class HealthSurveyGUI:
             else:
                 tex = f"DO YOU HAVE {q}?"    
             ans = self.ask_question(tex, opts)
+            if ans in ["YES","NO"]:
+                converter = {"YES":True,"NO":False}
+                ans = converter[ans]
+                
             self.answers[q] = ans
 
         # Final summary
         summary = "\n".join(f"{k}: {v}" for k, v in self.answers.items())
         messagebox.showinfo("Survey Completed", summary)
         self.root.quit()
+        return self.answers
 
 
 if __name__ == "__main__":
     gui = HealthSurveyGUI()
-    gui.start()
+    ans = gui.start()
+    print(ans)
