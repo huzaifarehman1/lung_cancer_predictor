@@ -3,7 +3,7 @@ from tkinter import messagebox
 import os
 import pandas
 from pyro.distributions import Categorical
-
+from torch import tensor
 
 
 class Bayesian_network:
@@ -21,7 +21,7 @@ class Bayesian_network:
                 continue
             
             ans = getattr(self,i)
-            if (isinstance(ans,int) or isinstance(ans,str)):
+            if (isinstance(ans,int) or (ans in ["Male","Female"])):
                 # not needed in if gender or age
                 continue
             # calculate required probabilities direct to lungcancer
@@ -29,8 +29,10 @@ class Bayesian_network:
             prob = self.find_P(i,ans,"LUNG_CANCER","YES")
             P_dict[i] = prob
         
-        print(P_dict)
+        print("dictionary:", P_dict)
         self.P_dict = P_dict
+        self.create_network()
+        self.answer = self.infer(100)
         
         
             
@@ -42,11 +44,12 @@ class Bayesian_network:
                        ("SMOKING","2","PEER_PRESSURE","2"),
                        ("ALCOHOL","2","PEER_PRESSURE","2"),
                        ("CHRONIC_DISEASE","2","PEER_PRESSURE","2"),]
-                       but we will combine it to use it"""
-                       
-        self.depend =  [("SMOKING","2","ALCOHOL","2","CHRONIC_DISEASE","2",
+                       but we will combine it to use it and use user data only instead
+                       of calculating entire probability"""
+        convert = lambda x: 1 if not(x) else 2
+        self.depend =  [("SMOKING",convert(getattr(self,"SMOKING")),"ALCOHOL",convert(getattr(self,"ALCOHOL")),"CHRONIC_DISEASE",convert(getattr(self,"CHRONIC_DISEASE")),
                          "ANXIETY","2"),
-                        ("SMOKING","2","ALCOHOL","2","CHRONIC_DISEASE","2",
+                        ("SMOKING",convert(getattr(self,"SMOKING")),"ALCOHOL",convert(getattr(self,"ALCOHOL")),"CHRONIC_DISEASE",convert(getattr(self,"CHRONIC_DISEASE")),
                          "PEER_PRESSURE","2")]          
         True_prob = {}
         for tup  in self.depend:
@@ -65,42 +68,63 @@ class Bayesian_network:
     
     def create_network(self):
         true_P = self.DependenciesOther()
-        strings = [] # exact value
-        self.remain = []# remianing
+        self.strings = [] # exact value
+        self.remain = {}# remianing
         for i in self.data.columns:
             if i == "LUNG_CANCER":
                 continue
             
             ans = getattr(self,i)
-            if (isinstance(ans,int) or isinstance(ans,str)):
+            if (isinstance(ans,int) or (ans in ["Male","Female"]) ):
                 # not needed in if gender or age
                 continue
             if i not in ["ANXIETY","PEER_PRESSURE"]:
-                strings.append((i,ans))
+                print(i,ans)
+                assert ans in ["YES","NO"]
+                self.strings.append((i,ans)) #
             else:
-                P = [1-true_P[i],true_P[i]]
+                P = tensor([1-true_P[i],true_P[i]])
                 model = Categorical(P) # 0 = no  , 1 = yes 
-                self.remain.append((i,model))
+                self.remain[i] = model
 
     def infer(self,step = 100):
-        conditions = []
-        cancer_true = 0 
-        total = 0
-        for i in step:
-            pass
-              
+        # calculate average of probabilities
+        anxiety_model:Categorical = self.remain["ANXIETY"]
+        pressure_model:Categorical = self.remain["PEER_PRESSURE"]
         
+        count = 0
+        seen = {}
+        converter = ['NO','YES']
+        # filter data
+        data = self.data
+        for i in self.strings:
+            col,val = i
+            data = data[data[col] == val]
+        memorized_data = data    
+        for i in range(step):
+            value_anxiety = converter[anxiety_model.sample().item()]
+            value_pressure = converter[pressure_model.sample().item()]
+            if (value_anxiety,value_pressure) not in seen:
+                data = data[(data["ANXIETY"] == value_anxiety) & (data["PEER_PRESSURE"] == value_pressure)]
+                match_count = (data["LUNG_CANCER"] == "YES").sum()
+                total_count = len(data)
+                
+                alpha = 1  # smoothing
+                k = self.data["LUNG_CANCER"].nunique()  # number of possible classes for it
+
+                # Apply Laplace smoothing always (safe even if total_count > 0)
+                probability = (match_count + alpha) / (total_count + k * alpha)
+        
+                seen[(value_anxiety,value_pressure)] = round(probability,6)
+            else:
+                probability = seen[(value_anxiety,value_pressure)]
+                
+            count += probability
+            data = memorized_data
             
-        
-        
-         
-                 
-                    
-                    
-            
+        return round(count/step,9)
                    
         #self.P_smoking = None # if he smoke or not than P of lungcancer
-        
     def find_P(self, given, given_value, tofind, tofind_value):
         """
         Find the probability P(tofind=tofind_value | given=given_value)
@@ -111,10 +135,13 @@ class Bayesian_network:
         # Count where tofind == tofind_value in filtered
         match_count = (filtered[tofind] == tofind_value).sum()
         total_count = len(filtered)
-        if total_count == 0:
-            return 0.0
-        probability = round(match_count / total_count,6)
-        return probability
+        
+        alpha = 1  # smoothing
+        k = self.data[tofind].nunique()  # number of possible classes for `tofind`
+
+        # Apply Laplace smoothing always (safe even if total_count > 0)
+        probability = (match_count + alpha) / (total_count + k * alpha)
+        return round(probability, 6)
         
 
 
@@ -178,7 +205,11 @@ class HealthSurveyGUI:
             btn.pack(pady=5)
 
         win.wait_window()  # Wait until answered
-        return answer_var.get()
+        answer =  answer_var.get()
+        if question=="AGE":
+            return int(answer)
+        else:
+            return answer
 
     def start(self):
         for q, opts in self.questions.items():
@@ -194,8 +225,7 @@ class HealthSurveyGUI:
                 tex = f"DO YOU HAVE {q}?"    
             ans = self.ask_question(tex, opts)
             if ans in ["YES","NO"]:
-                converter = {"YES":True,"NO":False}
-                ans = converter[ans]
+                pass
                 
             self.answers[q] = ans
 
@@ -204,9 +234,18 @@ class HealthSurveyGUI:
         messagebox.showinfo("Survey Completed", summary)
         self.root.quit()
         return self.answers
-
+    def show_answer(self,ans):
+        assert ans<=1
+        """
+        Takes the survey answers and shows
+        Lung Cancer probability in a popup.
+        """
+        messagebox.showinfo("Prediction Result",
+                            f"You have {ans*100}% chance of having Lung Cancer")
 
 if __name__ == "__main__":
+    # probabilities are always 0.5 why
     gui = HealthSurveyGUI()
     ans = gui.start()
     BN = Bayesian_network(ans)
+    gui.show_answer(BN.answer)
