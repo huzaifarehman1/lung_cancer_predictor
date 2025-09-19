@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 import os
 import pandas
-
+from pyro.distributions import Categorical
 
 
 
@@ -21,27 +21,79 @@ class Bayesian_network:
                 continue
             
             ans = getattr(self,i)
-            if (isinstance(int,ans) or isinstance(str,ans)):
+            if (isinstance(ans,int) or isinstance(ans,str)):
                 # not needed in if gender or age
                 continue
             # calculate required probabilities direct to lungcancer
+            # not actually needed for most part but i loved doing it
             prob = self.find_P(i,ans,"LUNG_CANCER","YES")
             P_dict[i] = prob
         
         print(P_dict)
+        self.P_dict = P_dict
+        
+        
             
     def DependenciesOther(self):
         # given , given_value , tofind , tofind_value but here tofing is not cancer
-        depend = [()]
-        True_prob = []
-        False_prob = []
-        for tup  in depend:
-            pa1,pa2,pa3,pa4 = tup
-            prob = self.find_P(pa1,pa2,pa3,pa4)
-            True_prob.append(prob) #all non negated Prob
-            False_prob.append( round(1-prob,6) ) # all negated Prob
-        return True_prob,False_prob    
-                
+        """self.depend = [("SMOKING","2","ANXIETY","2"),
+                       ("ALCOHOL","2","ANXIETY","2"),
+                       ("CHRONIC_DISEASE","2","ANXIETY","2"),
+                       ("SMOKING","2","PEER_PRESSURE","2"),
+                       ("ALCOHOL","2","PEER_PRESSURE","2"),
+                       ("CHRONIC_DISEASE","2","PEER_PRESSURE","2"),]
+                       but we will combine it to use it"""
+                       
+        self.depend =  [("SMOKING","2","ALCOHOL","2","CHRONIC_DISEASE","2",
+                         "ANXIETY","2"),
+                        ("SMOKING","2","ALCOHOL","2","CHRONIC_DISEASE","2",
+                         "PEER_PRESSURE","2")]          
+        True_prob = {}
+        for tup  in self.depend:
+            
+            pa1, pa2, pa3, pa4, pa5, pa6, v1, v2 = tup
+            prob = 0
+            filtered_rows = self.data[(self.data[pa1] == pa2) & (self.data[pa3] == pa4) & (self.data[pa5] == pa6)]
+            match_count = (filtered_rows[v1] == v2).sum()
+            total_count = len(filtered_rows)
+            if total_count == 0:
+                prob = 0.0
+            prob = round(match_count / total_count,6)
+
+            True_prob[v1] = prob #all non negated Prob where anxiety = 2
+        return True_prob   
+    
+    def create_network(self):
+        true_P = self.DependenciesOther()
+        strings = [] # exact value
+        self.remain = []# remianing
+        for i in self.data.columns:
+            if i == "LUNG_CANCER":
+                continue
+            
+            ans = getattr(self,i)
+            if (isinstance(ans,int) or isinstance(ans,str)):
+                # not needed in if gender or age
+                continue
+            if i not in ["ANXIETY","PEER_PRESSURE"]:
+                strings.append((i,ans))
+            else:
+                P = [1-true_P[i],true_P[i]]
+                model = Categorical(P) # 0 = no  , 1 = yes 
+                self.remain.append((i,model))
+
+    def infer(self,step = 100):
+        conditions = []
+        cancer_true = 0 
+        total = 0
+        for i in step:
+            pass
+              
+        
+            
+        
+        
+         
                  
                     
                     
