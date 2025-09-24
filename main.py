@@ -13,7 +13,12 @@ class Bayesian_network:
         attributes = self.data.columns
         for i in attributes:
             if i != "LUNG_CANCER":
-                setattr(self,i,answer_dict[i])
+                ans = answer_dict[i]
+                if (ans == "YES") or (ans == True):
+                    ans = 2
+                elif (ans == 'NO') or (ans == False):
+                    ans = 1    
+                setattr(self,i,ans)
         
         P_dict = {}
         for i in attributes:
@@ -21,13 +26,13 @@ class Bayesian_network:
                 continue
             
             ans = getattr(self,i)
-            if (isinstance(ans,int) or (ans in ["Male","Female"])):
+            if i in ["LUNG_CANCER","GENDER","AGE"]:
                 # not needed in if gender or age
                 continue
             # calculate required probabilities direct to lungcancer
             # not actually needed for most part but i loved doing it
             prob = self.find_P(i,ans,"LUNG_CANCER","YES")
-            P_dict[i] = prob
+            P_dict[i] = prob  
         
         print("dictionary:", P_dict)
         self.P_dict = P_dict
@@ -63,7 +68,7 @@ class Bayesian_network:
                 prob = 0.0
             prob = round(match_count / total_count,6)
 
-            True_prob[v1] = prob #all non negated Prob where anxiety = 2
+            True_prob[v1] = prob #all non negated Prob where anxiety = 2    
         return True_prob   
     
     def create_network(self):
@@ -75,12 +80,11 @@ class Bayesian_network:
                 continue
             
             ans = getattr(self,i)
-            if (isinstance(ans,int) or (ans in ["Male","Female"]) ):
+            if i in ["LUNG_CANCER","GENDER","AGE"]:
                 # not needed in if gender or age
                 continue
             if i not in ["ANXIETY","PEER_PRESSURE"]:
-                print(i,ans)
-                assert ans in ["YES","NO"]
+                assert ans in [1,2]
                 self.strings.append((i,ans)) #
             else:
                 P = tensor([1-true_P[i],true_P[i]])
@@ -89,16 +93,18 @@ class Bayesian_network:
 
     def infer(self,step = 100):
         # calculate average of probabilities
+        # chnage this way
         anxiety_model:Categorical = self.remain["ANXIETY"]
         pressure_model:Categorical = self.remain["PEER_PRESSURE"]
         
         count = 0
         seen = {}
-        converter = ['NO','YES']
+        converter = [1,2]
         # filter data
         data = self.data
         for i in self.strings:
             col,val = i
+            print(col,val)
             data = data[data[col] == val]
         memorized_data = data    
         for i in range(step):
@@ -106,6 +112,7 @@ class Bayesian_network:
             value_pressure = converter[pressure_model.sample().item()]
             if (value_anxiety,value_pressure) not in seen:
                 data = data[(data["ANXIETY"] == value_anxiety) & (data["PEER_PRESSURE"] == value_pressure)]
+                print(data)
                 match_count = (data["LUNG_CANCER"] == "YES").sum()
                 total_count = len(data)
                 
@@ -113,9 +120,11 @@ class Bayesian_network:
                 k = self.data["LUNG_CANCER"].nunique()  # number of possible classes for it
 
                 # Apply Laplace smoothing always (safe even if total_count > 0)
-                probability = (match_count + alpha) / (total_count + k * alpha)
-        
-                seen[(value_anxiety,value_pressure)] = round(probability,6)
+                if total_count == 0:
+                    probability = (match_count + alpha) / (total_count + k * alpha)
+                else:
+                    probability = match_count / total_count
+                seen[(value_anxiety,value_pressure)] = round(probability,6)    
             else:
                 probability = seen[(value_anxiety,value_pressure)]
                 
@@ -139,8 +148,13 @@ class Bayesian_network:
         alpha = 1  # smoothing
         k = self.data[tofind].nunique()  # number of possible classes for `tofind`
 
-        # Apply Laplace smoothing always (safe even if total_count > 0)
-        probability = (match_count + alpha) / (total_count + k * alpha)
+        # Apply Laplace smoothing (safe even if total_count > 0)
+       
+        if total_count == 0:
+            probability = (match_count + alpha) / (total_count + k * alpha)
+        else:
+            probability = match_count / total_count
+            
         return round(probability, 6)
         
 
@@ -246,6 +260,23 @@ class HealthSurveyGUI:
 if __name__ == "__main__":
     # probabilities are always 0.5 why
     gui = HealthSurveyGUI()
-    ans = gui.start()
+    #ans = gui.start()
+    ans = {
+ 'GENDER': 'Male',
+ 'AGE': 42,
+ 'SMOKING': 'NO',
+ 'YELLOW_FINGERS': 'YES',
+ 'ANXIETY': 'NO',
+ 'PEER_PRESSURE': 'YES',
+ 'CHRONIC_DISEASE': 'NO',
+ 'FATIGUE': 'YES',
+ 'ALLERGY': 'NO',
+ 'WHEEZING': 'YES',
+ 'ALCOHOL': 'NO',
+ 'COUGHING': 'NO',
+ 'SHORTNESS_BREATH': 'YES',
+ 'SWALLOWING': 'NO',
+ 'CHEST_PAIN': 'YES'
+}
     BN = Bayesian_network(ans)
     gui.show_answer(BN.answer)
