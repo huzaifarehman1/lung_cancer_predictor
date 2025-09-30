@@ -37,7 +37,7 @@ class Bayesian_network:
         print("dictionary:", P_dict)
         self.P_dict = P_dict
         self.create_network()
-        self.answer = self.infer(100)
+        self.answer = self.infer_way_1(100)
         
         
             
@@ -91,7 +91,55 @@ class Bayesian_network:
                 model = Categorical(P) # 0 = no  , 1 = yes 
                 self.remain[i] = model
 
-    def infer(self,step = 100):
+    def infer_way_2(self):
+        """
+        Naive Bayes inference:
+        Compute P(LUNG_CANCER="YES" | evidence) ∝ P(LUNG_CANCER="YES") * ∏_attrs P(attr=val | YES)
+        For uncertain attributes in self.remain (ANXIETY, PEER_PRESSURE) marginalize:
+        ∑_v P(attr=v) * P(attr=v | class)
+        """
+        # Prior
+        total = len(self.data)
+        yes_count = (self.data["LUNG_CANCER"] == "YES").sum()
+        # simple prior (no smoothing needed)
+        prior_yes = yes_count / total
+        prior_no = 1.0 - prior_yes # this was for P(lung_cancer = "YES")
+
+        # Likelihoods
+        like_yes = 1.0
+        like_no = 1.0
+
+        # Fully observed attributes collected in self.strings
+        # no need of marganalization
+        for col, val in self.strings:
+            p_yes = self.find_P("LUNG_CANCER", "YES", col, val) # p(lung = Yes | attr = v)
+            p_no = self.find_P("LUNG_CANCER", "NO", col, val)
+            like_yes *= p_yes # product of all 
+            like_no *= p_no
+
+        # Partially observed attributes in self.remain (Categorical models)
+        for attr, model in self.remain.items():
+            probs = model.probs if hasattr(model, "probs") else model.p
+            # probs[0] corresponds to value 1, probs[1] to value 2
+            marginal_yes = 0.0
+            marginal_no = 0.0
+            for idx, v in enumerate([1, 2]):
+                p_attr_given_yes = self.find_P("LUNG_CANCER", "YES", attr, v) 
+                p_attr_given_no = self.find_P("LUNG_CANCER", "NO", attr, v)
+                p_v = float(probs[idx])
+                marginal_yes += p_attr_given_yes * p_v
+                marginal_no += p_attr_given_no * p_v
+            like_yes *= marginal_yes
+            like_no *= marginal_no
+
+        num = prior_yes * like_yes
+        den = num + prior_no * like_no
+        if den == 0:
+            return 0.0
+        posterior_yes = num / den
+        return round(posterior_yes, 9)
+    
+    def infer_way_1(self,step = 100):
         # calculate average of probabilities
         # chnage this way
         anxiety_model:Categorical = self.remain["ANXIETY"]
@@ -99,12 +147,11 @@ class Bayesian_network:
         
         count = 0
         seen = {}
-        converter = [1,2]
+        converter = [1,2] # +1
         # filter data
         data = self.data
         for i in self.strings:
             col,val = i
-            print(col,val)
             data = data[data[col] == val]
         memorized_data = data    
         for i in range(step):
@@ -112,16 +159,12 @@ class Bayesian_network:
             value_pressure = converter[pressure_model.sample().item()]
             if (value_anxiety,value_pressure) not in seen:
                 data = data[(data["ANXIETY"] == value_anxiety) & (data["PEER_PRESSURE"] == value_pressure)]
-                print(data)
                 match_count = (data["LUNG_CANCER"] == "YES").sum()
                 total_count = len(data)
                 
-                alpha = 1  # smoothing
-                k = self.data["LUNG_CANCER"].nunique()  # number of possible classes for it
-
-                # Apply Laplace smoothing always (safe even if total_count > 0)
+                # Apply (safe even if total_count > 0)
                 if total_count == 0:
-                    probability = (match_count + alpha) / (total_count + k * alpha)
+                    return self.infer_way_2()
                 else:
                     probability = match_count / total_count
                 seen[(value_anxiety,value_pressure)] = round(probability,6)    
@@ -260,23 +303,6 @@ class HealthSurveyGUI:
 if __name__ == "__main__":
     # probabilities are always 0.5 why
     gui = HealthSurveyGUI()
-    #ans = gui.start()
-    ans = {
- 'GENDER': 'Male',
- 'AGE': 42,
- 'SMOKING': 'NO',
- 'YELLOW_FINGERS': 'YES',
- 'ANXIETY': 'NO',
- 'PEER_PRESSURE': 'YES',
- 'CHRONIC_DISEASE': 'NO',
- 'FATIGUE': 'YES',
- 'ALLERGY': 'NO',
- 'WHEEZING': 'YES',
- 'ALCOHOL': 'NO',
- 'COUGHING': 'NO',
- 'SHORTNESS_BREATH': 'YES',
- 'SWALLOWING': 'NO',
- 'CHEST_PAIN': 'YES'
-}
+    ans = gui.start()
     BN = Bayesian_network(ans)
     gui.show_answer(BN.answer)
